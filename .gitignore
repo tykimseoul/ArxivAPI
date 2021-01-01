@@ -1,0 +1,4 @@
+.idea
+venv/bin
+venv/lib
+*.hdf5
