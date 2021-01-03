@@ -39,7 +39,7 @@ def draw_contour(image, contour, color):
     x, y, w, h = cv2.boundingRect(contour)
     print(x, y, w, h, cv2.contourArea(contour))
     cv2.rectangle(image, (x, y), (x + w, y + h), color, -1)
-    return x, y, w, h
+    return x, y, x + w, y + h
 
 
 def regularize(image):

@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image
 import os
 import numpy as np
+import pytesseract
 
 from model import Unet
 from postprocess import regularize
@@ -43,20 +44,35 @@ def predict(image):
     return title_bbox, abstract_bbox
 
 
+def read_text(image, size, bbox):
+    image = np.array(image)
+    title_bbox = (np.multiply(np.array(bbox[0]), np.tile(size, (1, 2)))[0] / 256).astype(int)
+    abstract_bbox = (np.multiply(np.array(bbox[1]), np.tile(size, (1, 2)))[0] / 256).astype(int)
+    title_bbox = title_bbox + np.array([-1, -1, 1, 1]) * 4
+    abstract_bbox = abstract_bbox + np.array([-1, -1, 1, 1]) * 4
+    title_cropped = image[title_bbox[1]:title_bbox[3], title_bbox[0]:title_bbox[2]]
+    abstract_cropped = image[abstract_bbox[1]:abstract_bbox[3], abstract_bbox[0]:abstract_bbox[2]]
+    title = pytesseract.image_to_string(title_cropped)
+    print(title)
+    abstract = pytesseract.image_to_string(abstract_cropped)
+    print(abstract)
+    return title, abstract
+
+
 def get_cover(response):
     with open('/tmp/downloaded.pdf', 'wb') as f:
         f.write(response.content)
-        doc = fitz.open('/tmp/downloaded.pdf')
+        doc = fitz.Document('/tmp/downloaded.pdf')
         doc.select([0])
         doc.save('/tmp/cover.pdf')
-        pix = doc[0].getPixmap(alpha=False)
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        img = img.resize((256, 256), Image.NEAREST).convert('L')
-        img = np.array(img)
-        img = img / 255
-        img = np.expand_dims(img, 2)
-        img = np.expand_dims(img, 0)
-        return img
+        pix = doc[0].getPixmap(alpha=False, matrix=fitz.Matrix(2, 2))
+        original = Image.frombytes("RGB", [pix.width, pix.height], pix.samples).convert('L')
+        resized = original.resize((256, 256), Image.NEAREST)
+        resized = np.array(resized)
+        resized = resized / 255
+        resized = np.expand_dims(resized, 2)
+        resized = np.expand_dims(resized, 0)
+        return original, resized, (pix.width, pix.height)
 
 
 @app.route('/', methods=['GET'])
@@ -68,9 +84,10 @@ def index():
 def get_paper_data():
     link = request.args.get('link')
     response = requests.get(link)
-    cover = get_cover(response)
-    bbox = predict(cover)
-    return json.dumps(bbox)
+    original, resized, size = get_cover(response)
+    bbox = predict(resized)
+    title, abstract = read_text(original, size, bbox)
+    return {'title': title, 'abstract': abstract}
 
 
 def store_thumbnail(response, key):
