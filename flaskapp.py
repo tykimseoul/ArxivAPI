@@ -118,5 +118,11 @@ def check_thumbnail(key):
     return '{}.jpg'.format(key) in os.listdir(str(thumbnails_dir))
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0')
+def handler(event, context):
+    print('handling..')
+    response = {
+        "statusCode": 200,
+        "body": json.dumps(event)
+    }
+    return response
+
