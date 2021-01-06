@@ -1,5 +1,8 @@
 FROM public.ecr.aws/lambda/python:3.6
 
+COPY build_tesseract.sh /tmp/build_tesseract.sh
+RUN chmod +x /tmp/build_tesseract.sh
+RUN sh /tmp/build_tesseract.sh
 RUN pip3 install --upgrade pip
 
 WORKDIR .

@@ -1,4 +1,4 @@
-from flask import Flask, json, request
+import json
 import requests
 import re
 import fitz
@@ -11,7 +11,6 @@ import pytesseract
 from model import Unet
 from postprocess import regularize
 
-app = Flask(__name__)
 thumbnails_dir = Path("/tmp/thumbnails")
 thumbnails_dir.mkdir(parents=True, exist_ok=True)
 
@@ -53,9 +52,7 @@ def read_text(image, size, bbox):
     title_cropped = image[title_bbox[1]:title_bbox[3], title_bbox[0]:title_bbox[2]]
     abstract_cropped = image[abstract_bbox[1]:abstract_bbox[3], abstract_bbox[0]:abstract_bbox[2]]
     title = pytesseract.image_to_string(title_cropped)
-    print(title)
     abstract = pytesseract.image_to_string(abstract_cropped)
-    print(abstract)
     return title, abstract
 
 
@@ -75,14 +72,7 @@ def get_cover(response):
         return original, resized, (pix.width, pix.height)
 
 
-@app.route('/', methods=['GET'])
-def index():
-    return 'hello world'
-
-
-@app.route('/paper', methods=['GET'])
-def get_paper_data():
-    link = request.args.get('link')
+def get_paper_data(link):
     response = requests.get(link)
     original, resized, size = get_cover(response)
     bbox = predict(resized)
@@ -119,10 +109,12 @@ def check_thumbnail(key):
 
 
 def handler(event, context):
+    pytesseract.pytesseract.tesseract_cmd = "/root/tesseract-aws/tesseract"
     print('handling..')
+    result = get_paper_data(event['link'])
+    print(result)
     response = {
         "statusCode": 200,
-        "body": json.dumps(event)
+        "body": json.dumps(result)
     }
     return response
-
