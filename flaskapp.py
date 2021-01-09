@@ -109,8 +109,9 @@ def check_thumbnail(key):
 
 
 def handler(event, context):
-    pytesseract.pytesseract.tesseract_cmd = "/root/tesseract-aws/tesseract"
+    pytesseract.pytesseract.tesseract_cmd = "/usr/local/bin/tesseract"
     print('handling..')
+    event = json.loads(event['body'])
     result = get_paper_data(event['link'])
     print(result)
     response = {
