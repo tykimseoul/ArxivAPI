@@ -1,12 +1,12 @@
 import json
 import requests
-import re
 import fitz
 from pathlib import Path
 from PIL import Image
-import os
 import numpy as np
 import pytesseract
+import base64
+from io import BytesIO
 
 from model import Unet
 from postprocess import regularize
@@ -23,15 +23,6 @@ def load_mode():
 
 
 model = load_mode()
-
-
-def extract_cvf_thumbnail(url):
-    code = re.match(r'https://openaccess.thecvf.com/(\w+)/html/([\w-]+).html', url).groups()
-    pdf_link = 'https://openaccess.thecvf.com/{}/papers/{}.pdf'.format(code[0], code[1])
-    if not check_thumbnail(code[1]):
-        response = requests.get(pdf_link)
-        store_thumbnail(response, code[1])
-    return read_thumbnail(code[1]), pdf_link
 
 
 def predict(image):
@@ -60,6 +51,7 @@ def get_cover(response):
     with open('/tmp/downloaded.pdf', 'wb') as f:
         f.write(response.content)
         doc = fitz.Document('/tmp/downloaded.pdf')
+        thumbnail = get_thumbnail(doc)
         doc.select([0])
         doc.save('/tmp/cover.pdf')
         pix = doc[0].getPixmap(alpha=False, matrix=fitz.Matrix(2, 2))
@@ -69,43 +61,33 @@ def get_cover(response):
         resized = resized / 255
         resized = np.expand_dims(resized, 2)
         resized = np.expand_dims(resized, 0)
-        return original, resized, (pix.width, pix.height)
+        return original, resized, (pix.width, pix.height), thumbnail
 
 
 def get_paper_data(link):
     response = requests.get(link)
-    original, resized, size = get_cover(response)
+    original, resized, size, thumbnail = get_cover(response)
+    buffer = BytesIO()
+    thumbnail.save(buffer, format="JPEG")
+    thumbnail = base64.b64encode(buffer.getvalue()).decode('utf-8')
     bbox = predict(resized)
     title, abstract = read_text(original, size, bbox)
-    return {'title': title, 'abstract': abstract}
+    return {'title': title, 'abstract': abstract, 'thumbnail': thumbnail, 'pdfLink': link, 'bookmarked': False}
 
 
-def store_thumbnail(response, key):
-    with open('/tmp/downloaded.pdf', 'wb') as f:
-        f.write(response.content)
-        doc = fitz.open('/tmp/downloaded.pdf')
-        for i in range(len(doc)):
-            images = doc.getPageImageList(i)
-            if len(images) > 0:
-                img = images[0]
-                print(img)
-                xref = img[0]
-                pix = fitz.Pixmap(doc, xref)
-                try:
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    img.save('{}/{}.jpg'.format(str(thumbnails_dir), key), 'JPEG')
-                except ValueError:
-                    pix = fitz.Pixmap(pix, 0)
-                    pix.writeImage('{}/{}.jpg'.format(str(thumbnails_dir), key))
-                break
-
-
-def read_thumbnail(key):
-    return Image.open('{}/{}.jpg'.format(str(thumbnails_dir), key))
-
-
-def check_thumbnail(key):
-    return '{}.jpg'.format(key) in os.listdir(str(thumbnails_dir))
+def get_thumbnail(doc):
+    for i in range(len(doc)):
+        images = doc.getPageImageList(i)
+        if len(images) > 0:
+            img = images[0]
+            print(img)
+            xref = img[0]
+            pix = fitz.Pixmap(doc, xref)
+            try:
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                return img
+            except ValueError:
+                continue
 
 
 def handler(event, context):
